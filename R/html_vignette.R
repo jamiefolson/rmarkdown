@@ -12,11 +12,17 @@
 #'   \item uses a custom css stylesheet
 #'  }
 #'
+#' @details
+#'
+#' See the \href{http://rmarkdown.rstudio.com/package_vignette_format.html}{online
+#' documentation} for additional details on using the \code{html_vignette} format.
+#' 
 #' @inheritParams html_document
 #' @return R Markdown output format to pass to \code{\link{render}}
 #' @export
 html_vignette <- function(fig_width = 3,
                           fig_height = 3,
+                          dev = 'png',
                           css = NULL,
                           ...) {
   
@@ -27,6 +33,7 @@ html_vignette <- function(fig_width = 3,
   
   html_document(fig_width = fig_width, 
                 fig_height = fig_height, 
+                dev = dev,
                 fig_retina = FALSE,
                 css = css, 
                 theme = NULL,

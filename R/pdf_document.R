@@ -6,6 +6,7 @@
 #'
 #' @param fig_crop \code{TRUE} to automatically apply the \code{pdfcrop} utility
 #'   (if available) to pdf figures
+#' @param dev Graphics device to use for figure output (defaults to pdf)
 #' @param highlight Syntax highlighting style. Supported styles include
 #'   "default", "tango", "pygments", "kate", "monochrome", "espresso",
 #'   "zenburn", and "haddock". Pass \code{NULL} to prevent syntax highlighting.
@@ -23,6 +24,9 @@
 #'
 #' @details
 #'
+#' See the \href{http://rmarkdown.rstudio.com/pdf_document_format.html}{online
+#' documentation} for additional details on using the \code{pdf_document} format.
+#' 
 #' Creating PDF output from R Markdown requires that LaTeX be installed.
 #'
 #' R Markdown documents can have optional metadata that is used to generate a
@@ -30,12 +34,11 @@
 #' see the documentation on R Markdown \link[=rmd_metadata]{metadata}.
 #'
 #' R Markdown documents also support citations. You can find more information on
-#' the markdown syntax for citations within the pandoc documentation on
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Citations.html}{citations}
-#' and
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Footnotes.html}{footnotes}.
-#'
-#' Many aspects of the LaTeX template used to create PDF documents can be
+#' the markdown syntax for citations in the
+#' \href{http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html}{Bibliographies
+#' and Citations} article in the online documentation.
+#' 
+#' Many aspects of the LaTeX template used to create PDF documents can be 
 #' customized using metadata. For example:
 #'
 #' \tabular{l}{
@@ -56,6 +59,7 @@
 #'    \item{\code{geometry}}{Options for geometry class (e.g. margin=1in); may be repeated}
 #'    \item{\code{mainfont, sansfont, monofont, mathfont}}{Document fonts (works only with xelatex and lualatex, see the \code{latex_engine} option)}
 #'    \item{\code{linkcolor, urlcolor, citecolor}}{Color for internal, external, and citation links (red, green, magenta, cyan, blue, black)}
+#'    \item{\code{linestretch}}{Options for line spacing (e.g. 1, 1.5, 3)}
 #' }
 #'
 #' @examples
@@ -81,11 +85,13 @@ pdf_document <- function(toc = FALSE,
                          fig_height = 4.5,
                          fig_crop = TRUE,
                          fig_caption = FALSE,
+                         dev = 'pdf',
                          highlight = "default",
                          template = "default",
                          keep_tex = FALSE,
                          latex_engine = "pdflatex",
                          includes = NULL,
+                         md_extensions = NULL,
                          pandoc_args = NULL) {
 
   # base pandoc options for all PDF output
@@ -95,11 +101,22 @@ pdf_document <- function(toc = FALSE,
   args <- c(args, pandoc_toc_args(toc, toc_depth))
 
   # template path and assets
-  if (identical(template, "default"))
+  if (identical(template, "default")) {
+    
+    # choose the right template    
+    if (!pandoc_available("1.14"))
+      latex_template <- "default.tex"
+    else
+      latex_template <- "default-1.14.tex"
+      
+    # add to args
     args <- c(args, "--template",
-              pandoc_path_arg(rmarkdown_system_file("rmd/latex/default.tex")))
-  else if (!is.null(template))
+              pandoc_path_arg(rmarkdown_system_file(paste0("rmd/latex/", 
+                                                           latex_template))))
+    
+  } else if (!is.null(template)) {
     args <- c(args, "--template", pandoc_path_arg(template))
+  }
 
   # numbered sections
   if (number_sections)
@@ -120,21 +137,49 @@ pdf_document <- function(toc = FALSE,
   # args args
   args <- c(args, pandoc_args)
 
-  # use a geometry filter when we are using the "default" template
-  if (identical(template, "default"))
-    pre_processor <- pdf_pre_processor
-  else
-    pre_processor <- NULL
+  saved_files_dir <- NULL
+  
+  pre_processor <- function(metadata, input_file, runtime, knit_meta, 
+                                files_dir, output_dir) {
+    # save files dir (for generating intermediates)
+    saved_files_dir <<- files_dir
+    
+    # use a geometry filter when we are using the "default" template
+    if (identical(template, "default"))
+      pdf_pre_processor(metadata, input_file, runtime, knit_meta, files_dir, 
+                        output_dir)
+    else
+      invisible(NULL)
+  }
+
+  intermediates_generator <- function(original_input, encoding, 
+                                      intermediates_dir) {
+    # copy all intermediates (pandoc will need to bundle them in the PDF)
+    intermediates <- copy_render_intermediates(original_input, encoding, 
+                                               intermediates_dir, FALSE)
+
+    # we need figures from the supporting files dir to be available during
+    # render as well; if we have a files directory, copy its contents
+    if (!is.null(saved_files_dir) && dir_exists(saved_files_dir)) {
+      file.copy(saved_files_dir, intermediates_dir, recursive = TRUE)
+      intermediates <- c(intermediates, list.files(
+        path = file.path(intermediates_dir, basename(saved_files_dir)),
+        all.files = TRUE, recursive = TRUE, full.names = TRUE))
+    }
+    
+    intermediates 
+  }
 
   # return format
   output_format(
-    knitr = knitr_options_pdf(fig_width, fig_height, fig_crop),
+    knitr = knitr_options_pdf(fig_width, fig_height, fig_crop, dev),
     pandoc = pandoc_options(to = "latex",
-                            from = from_rmarkdown(fig_caption),
+                            from = from_rmarkdown(fig_caption, md_extensions),
                             args = args,
                             keep_tex = keep_tex),
     clean_supporting = !keep_tex,
-    pre_processor = pre_processor
+    pre_processor = pre_processor,
+    intermediates_generator = intermediates_generator
   )
 }
 
@@ -146,13 +191,12 @@ pdf_pre_processor <- function(metadata, input_file, runtime, knit_meta, files_di
 
   args <- c()
 
-  # set the margin to 1 inch if not otherwise specified
-  has_margin <- function(text) {
-    length(grep("^geometry\\:[ \\t]*margin=\\d+(\\.?\\d+)?\\w+$", text)) > 0
+  # set the margin to 1 inch if no other geometry options specified
+  has_geometry <- function(text) {
+    length(grep("^geometry:.*$", text)) > 0
   }
-  if (!has_margin(readLines(input_file, warn = FALSE)))
+  if (!has_geometry(readLines(input_file, warn = FALSE)))
     args <- c(args, "--variable", "geometry:margin=1in")
 
   args
 }
-

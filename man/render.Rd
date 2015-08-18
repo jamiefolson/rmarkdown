@@ -5,8 +5,8 @@
 render(input, output_format = NULL, output_file = NULL, output_dir = NULL,
        output_options = NULL, intermediates_dir = NULL,
        runtime = c("auto", "static", "shiny"),
-       clean = TRUE, envir = parent.frame(), quiet = FALSE,
-       encoding = getOption("encoding"))
+       clean = TRUE, params = NULL, envir = parent.frame(), 
+       quiet = FALSE, encoding = getOption("encoding"))
 }
 \arguments{
   \item{input}{Input file (R script, Rmd, or plain markdown).}
@@ -44,6 +44,11 @@ render(input, output_format = NULL, output_file = NULL, output_dir = NULL,
 
   \item{clean}{\code{TRUE} to clean intermediate files created
   during rendering.}
+  
+  \item{params}{List of named parameters that override custom params
+  specified within the YAML front-matter (e.g. specifying a dataset to
+  read or a date range to confine output to). Pass \code{"ask"} to start
+  an application that helps guide parameter configuration.}
 
   \item{envir}{The environment in which the code chunks are
   to be evaluated during knitting (can use
@@ -66,6 +71,10 @@ pandoc. If the input requires knitting then
 \code{\link[knitr:knit]{knit}} is called prior to pandoc.
 }
 \details{
+
+Note that the \pkg{knitr} \code{error} option is set to \code{FALSE}
+during rendering (which is different from the \pkg{knitr} default
+value of \code{TRUE}).
 
 For additional details on rendering R scripts see
 \link[=compile_notebook]{Compiling R scripts to a notebook}.

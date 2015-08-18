@@ -75,6 +75,10 @@ pandoc_convert <- function(input,
   if (citeproc)
     args <- c(args, "--filter", pandoc_citeproc())
 
+  # set pandoc stack size
+  stack_size <- getOption("pandoc.stack.size", default = "512m")
+  args <- c(c("+RTS", paste0("-K", stack_size), "-RTS"), args)
+  
   # additional command line options
   args <- c(args, options)
 
@@ -95,19 +99,22 @@ pandoc_convert <- function(input,
   invisible(NULL)
 }
 
-#' Check whether pandoc is available
-#'
-#' Determine whether pandoc is currently available on the system, optionally
-#' checking for a specific version or greater.
-#'
+#' Check pandoc availabilty and version
+#' 
+#' Determine whether pandoc is currently available on the system (optionally 
+#' checking for a specific version or greater). Determine the specific version 
+#' of pandoc available.
+#' 
 #' @param version Required version of pandoc
-#'
-#' @return Logical indicating whether a version of pandoc is available
-#'
+#'   
+#' @return \code{pandoc_available} returns a logical indicating whether the 
+#'   required version of pandoc is available. \code{pandoc_version} returns a 
+#'   \code{\link[base]{numeric_version}} with the version of pandoc found.
+#'   
 #' @details
-#'
-#' The system path as well as the version of pandoc shipped with RStudio (if
-#' running under RStudio) are scanned for pandoc and the highest version
+#' 
+#' The system path as well as the version of pandoc shipped with RStudio (if 
+#' running under RStudio) are scanned for pandoc and the highest version 
 #' available is used.
 #'
 #' @examples
@@ -115,8 +122,7 @@ pandoc_convert <- function(input,
 #' library(rmarkdown)
 #'
 #' if (pandoc_available())
-#'
-#'   cat("pandoc is available!\n")
+#'   cat("pandoc", as.character(pandoc_version()), "is available!\n")
 #'
 #' if (pandoc_available("1.12.3"))
 #'   cat("requried version of pandoc is available!\n")
@@ -137,6 +143,13 @@ pandoc_available <- function(version = NULL) {
     FALSE
 }
 
+
+#' @rdname pandoc_available
+#' @export
+pandoc_version <- function() {
+  find_pandoc()
+  .pandoc$version
+}
 
 #' Functions for generating pandoc command line arguments
 #'
@@ -385,7 +398,7 @@ pandoc_mathjax_args <- function(mathjax,
       mathjax_path <- render_supporting_files(mathjax_path,
                                               files_dir,
                                               "mathjax-local")
-      mathjax <- paste(relative_to(output_dir, mathjax_path), "/",
+      mathjax <- paste(normalized_relative_to(output_dir, mathjax_path), "/",
                        mathjax_config(), sep = "")
     }
 
@@ -460,11 +473,13 @@ pandoc_html_highlight_args <- function(highlight,
     highlight <- match.arg(highlight, html_highlighters())
     if (highlight %in% c("default", "textmate")) {
       highlight_path <- rmarkdown_system_file("rmd/h/highlight")
-      if (self_contained && !is_windows())
+      if (self_contained)
         highlight_path <- pandoc_path_arg(highlight_path)
       else
-        highlight_path <- relative_to(output_dir,
+      {
+        highlight_path <- normalized_relative_to(output_dir,
           render_supporting_files(highlight_path, files_dir))
+      }
       args <- c(args, "--no-highlight")
       args <- c(args,
                 "--variable", paste("highlightjs=", highlight_path, sep=""))
@@ -497,7 +512,7 @@ find_pandoc <- function() {
 
     # determine the versions of the sources
     versions <- lapply(sources, function(src) {
-      if (file.exists(src))
+      if (dir_exists(src))
         get_pandoc_version(src)
       else
         numeric_version("0")
@@ -557,6 +572,11 @@ with_pandoc_safe_environment <- function(code) {
     # fill in a the LANG environment variable if it doesn't exist
     Sys.setenv(LANG=detect_generic_lang())
     on.exit(Sys.unsetenv("LANG"), add = TRUE)
+  }
+  if (Sys.info()['sysname'] == "Linux" &&
+    identical(Sys.getenv("LANG"), "en_US")) {
+    Sys.setenv(LANG="en_US.UTF-8")
+    on.exit(Sys.setenv(LANG="en_US"), add = TRUE)
   }
   force(code)
 }

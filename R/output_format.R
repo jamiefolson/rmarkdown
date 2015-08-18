@@ -14,7 +14,13 @@
 #'   \code{\link{render_supporting_files}}
 #' @param pre_processor An optional pre-processor function that receives the
 #'   \code{metadata}, \code{input_file}, \code{runtime}, \code{knit_meta},
-#'   and \code{files_dir} and can return additional arguments to pass to pandoc.
+#'   \code{files_dir}, and \code{output_dir} and can return additional arguments 
+#'   to pass to pandoc.
+#' @param intermediates_generator An optional function that receives the 
+#'   original \code{input_file}, its \code{encoding}, and the intermediates
+#'   directory (i.e. the \code{intermediates_dir} argument to
+#'   \code{\link{render}}). The function should generate and return the names of
+#'   any intermediate files required to render the \code{input_file}.
 #' @param post_processor An optional post-processor function that receives the
 #'   \code{metadata}, \code{input_file}, \code{output_file}, \code{clean},
 #'   and \code{verbose} parmaeters, and can return an alternative
@@ -38,6 +44,7 @@ output_format <- function(knitr,
                           keep_md = FALSE,
                           clean_supporting = TRUE,
                           pre_processor = NULL,
+                          intermediates_generator = NULL,
                           post_processor = NULL,
                           base_format = NULL) {
   format <- structure(list(knitr = knitr,
@@ -45,6 +52,7 @@ output_format <- function(knitr,
                  keep_md = keep_md,
                  clean_supporting = clean_supporting && !keep_md,
                  pre_processor = pre_processor,
+                 intermediates_generator = intermediates_generator,
                  post_processor = post_processor),
             class = "rmarkdown_output_format")
 
@@ -92,7 +100,7 @@ merge_post_processors <- function (base, overlay) {
 }
 
 # merges two output formats
-merge_output_formats <- function (base, overlay)  {
+merge_output_formats <- function(base, overlay)  {
   structure(list(
     knitr = merge_lists(base$knitr, overlay$knitr),
     pandoc = pandoc_options(
@@ -105,6 +113,9 @@ merge_output_formats <- function (base, overlay)  {
       merge_scalar(base$clean_supporting, overlay$clean_supporting),
     pre_processor =
       merge_function_outputs(base$pre_processor, overlay$pre_processor, c),
+    intermediates_generator = 
+      merge_function_outputs(base$intermediates_generator, 
+                             overlay$intermediates_generator, c),
     post_processor =
       merge_post_processors(base$post_processor, overlay$post_processor)
   ), class = "rmarkdown_output_format")
@@ -151,17 +162,21 @@ knitr_options <- function(opts_knit = NULL,
 #' @seealso \link{knitr_options}, \link{output_format}
 #'
 #' @export
-knitr_options_pdf <- function(fig_width, fig_height, fig_crop) {
+knitr_options_pdf <- function(fig_width, fig_height, fig_crop, dev = 'pdf') {
 
   # default options
   opts_knit <- NULL
-  opts_chunk <- list(dev = 'pdf',
+  opts_chunk <- list(dev = dev,
                      fig.width = fig_width,
                      fig.height = fig_height)
-  # set the dingbats option for the pdf device
-  if (packageVersion("knitr") >= "1.5.31") {
-    opts_chunk$dev.args <- list(pdf = list(useDingbats = FALSE))
-  } else pdf.options(useDingbats = FALSE)
+  
+  # set the dingbats option for the pdf device if requried
+  if (dev == 'pdf') {
+    if (packageVersion("knitr") >= "1.5.31") {
+      opts_chunk$dev.args <- list(pdf = list(useDingbats = FALSE))
+    } else pdf.options(useDingbats = FALSE)
+  }
+  
   knit_hooks <- NULL
 
   # apply cropping if requested and we have pdfcrop
@@ -249,21 +264,22 @@ pandoc_options <- function(to,
 #' @export
 rmarkdown_format <- function(extensions = NULL) {
 
-  paste(c(
+  format <- c("markdown")
 
-    # core pandoc markdown (all extensions enabled)
-    "markdown",
-
-    # additional github flavored markdown extensions for
-    # compatibility with the markdown package
-    "+autolink_bare_uris",
-    "+ascii_identifiers",
-    "+tex_math_single_backslash",
-
-    # caller additions or subtractions to the format
-    extensions
-
-  ), collapse = "")
+  # only add extensions if the user hasn't already specified
+  # a manual override for them
+  addExtension <- function(extension) {
+    if (length(grep(extension, extensions)) == 0)
+      format <<- c(format, paste0("+", extension))
+  }
+  
+  addExtension("autolink_bare_uris")
+  addExtension("ascii_identifiers")
+  addExtension("tex_math_single_backslash")
+  
+  format <- c(format, extensions, recursive = TRUE)
+  
+  paste(format, collapse = "")
 }
 
 #' Determine the default output format for an R Markdown document
@@ -327,7 +343,7 @@ output_format_from_yaml_front_matter <- function(input_lines,
 
   # parse common _output.yaml if we have it
   if (file.exists("_output.yaml"))
-    common_output_format_yaml <- yaml::yaml.load_file("_output.yaml")
+    common_output_format_yaml <- yaml_load_file_utf8("_output.yaml")
   else
     common_output_format_yaml <- list()
 
@@ -445,7 +461,7 @@ enumerate_output_formats <- function(input, envir, encoding) {
   # read any _output.yaml
   output_yaml <- file.path(dirname(input), "_output.yaml")
   if (file.exists(output_yaml))
-    common_output_format_yaml <- yaml::yaml.load_file(output_yaml)
+    common_output_format_yaml <- yaml_load_file_utf8(output_yaml)
   else
     common_output_format_yaml <- list()
 
@@ -483,7 +499,7 @@ parse_yaml_front_matter <- function(input_lines) {
       front_matter <- front_matter[2:(length(front_matter)-1)]
       front_matter <- paste(front_matter, collapse="\n")
       validate_front_matter(front_matter)
-      parsed_yaml <- yaml::yaml.load(front_matter)
+      parsed_yaml <- yaml_load_utf8(front_matter)
       if (is.list(parsed_yaml))
         parsed_yaml
       else
@@ -506,20 +522,22 @@ validate_front_matter <- function(front_matter) {
 
 partition_yaml_front_matter <- function(input_lines) {
 
-  validate_front_matter <- function(delimeters) {
-    if (length(delimiters) >= 2 && (delimiters[2] - delimiters[1] > 1)) {
+  validate_front_matter <- function(delimiters) {
+    if (length(delimiters) >= 2 &&
+        (delimiters[2] - delimiters[1] > 1) &&
+        grepl("^---\\s*$", input_lines[delimiters[1]])) {
       # verify that it's truly front matter (not preceded by other content)
-      if (delimeters[1] == 1)
+      if (delimiters[1] == 1)
         TRUE
       else
-        is_blank(input_lines[1:delimeters[1]-1])
+        is_blank(input_lines[1:delimiters[1]-1])
     } else {
       FALSE
     }
   }
 
   # is there yaml front matter?
-  delimiters <- grep("^---\\s*$", input_lines)
+  delimiters <- grep("^(---|\\.\\.\\.)\\s*$", input_lines)
   if (validate_front_matter(delimiters)) {
 
     front_matter <- input_lines[(delimiters[1]):(delimiters[2])]

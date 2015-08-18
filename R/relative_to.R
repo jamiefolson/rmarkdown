@@ -1,6 +1,6 @@
 
 #' Relative path utility function
-
+#'
 #' Given a directory and a file, return a relative path from the directory to
 #' the file, or the unmodified file path if the file does not appear to be in
 #' the directory.
@@ -27,4 +27,11 @@ relative_to <- function(dir, file) {
     file <- substr(file, 3, nchar(file))
   
   file
+}
+
+# A variant of relative_to that normalizes its inputs.
+normalized_relative_to <- function(dir, file) {
+  relative_to(
+    normalizePath(dir, winslash = "/", mustWork = FALSE),
+    normalizePath(file, winslash = "/", mustWork = FALSE))
 }

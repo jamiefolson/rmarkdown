@@ -14,6 +14,7 @@
 #'   is because \code{fig_retina} relies on outputting HTML directly into the
 #'   markdown document).
 #' @param fig_caption \code{TRUE} to render figures with captions
+#' @param dev Graphics device to use for figure output (defaults to png)
 #' @param smart Produce typographically correct output, converting straight
 #'   quotes to curly quotes, --- to em-dashes, -- to en-dashes, and ... to
 #'   ellipses.
@@ -47,6 +48,9 @@
 #' @param lib_dir Directory to copy dependent HTML libraries (e.g. jquery,
 #'   bootstrap, etc.) into. By default this will be the name of the document
 #'   with \code{_files} appended to it.
+#' @param md_extensions Markdown extensions to be added or removed from the
+#'   default definition or R Markdown. See the \code{\link{rmarkdown_format}}
+#'   for additional details.
 #' @param pandoc_args Additional command line options to pass to pandoc
 #' @param ... Additional function arguments to pass to the base R Markdown HTML
 #'   output formatter
@@ -55,15 +59,17 @@
 #'
 #' @details
 #'
+#' See the \href{http://rmarkdown.rstudio.com/html_document_format.html}{online
+#' documentation} for additional details on using the \code{html_document} format.
+#'
 #' R Markdown documents can have optional metadata that is used to generate a
 #' document header that includes the title, author, and date. For more details
 #' see the documentation on R Markdown \link[=rmd_metadata]{metadata}.
 #'
 #' R Markdown documents also support citations. You can find more information on
-#' the markdown syntax for citations within the pandoc documentation on
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Citations.html}{citations}
-#' and
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Footnotes.html}{footnotes}.
+#' the markdown syntax for citations in the
+#' \href{http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html}{Bibliographies
+#' and Citations} article in the online documentation.
 #'
 #'
 #' @section Templates:
@@ -111,6 +117,7 @@ html_document <- function(toc = FALSE,
                           fig_height = 5,
                           fig_retina = if (!fig_caption) 2,
                           fig_caption = FALSE,
+                          dev = 'png',
                           smart = TRUE,
                           self_contained = TRUE,
                           theme = "default",
@@ -121,6 +128,7 @@ html_document <- function(toc = FALSE,
                           includes = NULL,
                           keep_md = FALSE,
                           lib_dir = NULL,
+                          md_extensions = NULL,
                           pandoc_args = NULL,
                           ...) {
 
@@ -183,9 +191,9 @@ html_document <- function(toc = FALSE,
 
   # return format
   output_format(
-    knitr = knitr_options_html(fig_width, fig_height, fig_retina, keep_md),
+    knitr = knitr_options_html(fig_width, fig_height, fig_retina, keep_md, dev),
     pandoc = pandoc_options(to = "html",
-                            from = from_rmarkdown(fig_caption),
+                            from = from_rmarkdown(fig_caption, md_extensions),
                             args = args),
     keep_md = keep_md,
     clean_supporting = self_contained,
@@ -212,9 +220,9 @@ html_document <- function(toc = FALSE,
 #' @seealso \link{knitr_options}, \link{output_format}
 #'
 #' @export
-knitr_options_html <- function(fig_width, fig_height, fig_retina, keep_md) {
+knitr_options_html <- function(fig_width, fig_height, fig_retina, keep_md, dev = 'png') {
 
-  opts_chunk <- list(dev = 'png',
+  opts_chunk <- list(dev = dev,
                      dpi = 96,
                      fig.width = fig_width,
                      fig.height = fig_height,

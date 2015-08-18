@@ -24,6 +24,9 @@
 #'
 #' @details
 #'
+#' See the \href{http://rmarkdown.rstudio.com/beamer_presentation_format.html}{online
+#' documentation} for additional details on using the \code{beamer_presentation} format.
+#'
 #' Creating Beamer output from R Markdown requires that LaTeX be installed.
 #'
 #' For more information on markdown syntax for presentations see
@@ -35,10 +38,9 @@
 #' see the documentation on R Markdown \link[=rmd_metadata]{metadata}.
 #'
 #' R Markdown documents also support citations. You can find more information on
-#' the markdown syntax for citations within the pandoc documentation on
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Citations.html}{citations}
-#' and
-#' \href{http://johnmacfarlane.net/pandoc/demo/example19/Footnotes.html}{footnotes}.
+#' the markdown syntax for citations in the
+#' \href{http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html}{Bibliographies
+#' and Citations} article in the online documentation.
 #'
 #' @examples
 #' \dontrun{
@@ -60,23 +62,23 @@ beamer_presentation <- function(toc = FALSE,
                                 fig_height = 7,
                                 fig_crop = TRUE,
                                 fig_caption = FALSE,
+                                dev = 'pdf',
                                 theme = "default",
                                 colortheme = "default",
                                 fonttheme = "default",
                                 highlight = "default",
                                 template = "default",
                                 keep_tex = FALSE,
+                                latex_engine = "pdflatex",                              
                                 includes = NULL,
+                                md_extensions = NULL,
                                 pandoc_args = NULL) {
 
   # base pandoc options for all beamer output
   args <- c()
 
   # template path and assets
-  if (identical(template, "default"))
-    args <- c(args, "--template",
-              pandoc_path_arg(rmarkdown_system_file("rmd/beamer/default.tex")))
-  else if (!is.null(template))
+  if (!is.null(template) && !identical(template, "default"))
     args <- c(args, "--template", pandoc_path_arg(template))
 
   # table of contents
@@ -104,6 +106,10 @@ beamer_presentation <- function(toc = FALSE,
     highlight <- match.arg(highlight, highlighters())
   args <- c(args, pandoc_highlight_args(highlight))
 
+  # latex engine
+  latex_engine = match.arg(latex_engine, c("pdflatex", "lualatex", "xelatex"))
+  args <- c(args, pandoc_latex_engine_args(latex_engine))
+  
   # content includes
   args <- c(args, includes_to_pandoc_args(includes))
 
@@ -112,9 +118,9 @@ beamer_presentation <- function(toc = FALSE,
 
   # return format
   output_format(
-    knitr = knitr_options_pdf(fig_width, fig_height, fig_crop),
+    knitr = knitr_options_pdf(fig_width, fig_height, fig_crop, dev),
     pandoc = pandoc_options(to = "beamer",
-                            from = from_rmarkdown(fig_caption),
+                            from = from_rmarkdown(fig_caption, md_extensions),
                             args = args,
                             keep_tex = keep_tex),
     clean_supporting = !keep_tex

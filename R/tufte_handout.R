@@ -10,9 +10,11 @@
 tufte_handout <- function(fig_width = 4,
                           fig_height = 2.5,
                           fig_crop = TRUE,
+                          dev = 'pdf',
                           highlight = "default",
                           keep_tex = FALSE,
                           includes = NULL,
+                          md_extensions = NULL,
                           pandoc_args = NULL) {
   
   # resolve default highlight
@@ -29,16 +31,18 @@ tufte_handout <- function(fig_width = 4,
   format <- rmarkdown::pdf_document(fig_width = fig_width,
                                     fig_height = fig_height,
                                     fig_crop = fig_crop,
-                                    highlight = "pygments",
+                                    dev = dev,
+                                    highlight = highlight,
                                     template = template,
                                     keep_tex = keep_tex,
                                     latex_engine = "pdflatex",
                                     includes = includes,
+                                    md_extensions = md_extensions,
                                     pandoc_args = pandoc_args)
                         
   
   # create knitr options (ensure opts and hooks are non-null)
-  knitr_options <- knitr_options_pdf(fig_width, fig_height, fig_crop)
+  knitr_options <- knitr_options_pdf(fig_width, fig_height, fig_crop, dev)
   if (is.null(knitr_options$opts_knit))
     knitr_options$opts_knit <- list()
   if (is.null(knitr_options$knit_hooks))
@@ -56,9 +60,6 @@ tufte_handout <- function(fig_width = 4,
                       "",
                       paste("\\caption{", options$fig.cap, "}\n", sep = ""))
     
-    # determine path to plot
-    file <- knitr::fig_path(options = options)
-    
     # determine figure type
     if (isTRUE(options$fig.margin)) 
       figtype <- "marginfigure"
@@ -69,7 +70,7 @@ tufte_handout <- function(fig_width = 4,
     
     # return the latex
     paste(sprintf('\\begin{%s}\n \\includegraphics{%s}\n%s\\end{%s}\n',
-                  figtype, file, caption, figtype))
+                  figtype, x, caption, figtype))
   }
   
   # override the knitr settings of the base format and return the format
